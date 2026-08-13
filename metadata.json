@@ -1,0 +1,6 @@
+{
+  "name": "AI MCP Client",
+  "description": "A powerful Model Context Protocol (MCP) client featuring real-time console logs, request history, and an integrated Gemini agent that uses local or remote MCP tools.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
