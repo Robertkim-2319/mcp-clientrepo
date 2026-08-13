@@ -33,10 +33,10 @@ import {
 export default function App() {
   const [activeTab, setActiveTab] = useState<"agent" | "explorer" | "console" | "history" | "settings">("settings");
 
-  // Connection Configurations
+  // Connection Configurations (Defaults to Built-in MT Manager Sandbox for out-of-the-box readiness)
   const [config, setConfig] = useState<ConnectionConfig>({
-    url: "http://127.0.0.1:2319/mcp",
-    mode: "direct",
+    url: "/api/mcp/builtin",
+    mode: "proxy",
     apiKey: "",
     isCustomHeader: false,
     customHeaderName: "Authorization",
@@ -63,7 +63,7 @@ export default function App() {
     "You are an expert full-stack developer copilot integrated with an MCP environment. Help the user achieve their goals by calling local system tools via Model Context Protocol. Always explain clearly what tools you are using and summarize files or changes elegantly."
   );
 
-  // Auto-clear states on mount & initialize log
+  // Auto-connect to built-in virtual MCP server on mount
   useEffect(() => {
     setConsoleLogs([
       {
@@ -72,9 +72,12 @@ export default function App() {
         type: "system",
         direction: "none",
         method: "SYSTEM",
-        payload: { info: "AI MCP Workspace Client booted successfully. Awaiting connection parameters." },
+        payload: { info: "AI MCP Workspace Client booted. Initializing workspace..." },
       },
     ]);
+
+    // Initial handshake
+    handleConnect();
   }, []);
 
   const getHumanSummary = (method: string, params: any): string => {

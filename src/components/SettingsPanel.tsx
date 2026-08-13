@@ -85,6 +85,77 @@ export default function SettingsPanel({
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0 overflow-y-auto" id="settings-layout">
         {/* LEFT PANEL: Connection Form */}
         <div className="lg:col-span-6 p-5 border-r border-neutral-850 space-y-6 overflow-y-auto">
+          {/* Quick Presets */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-neutral-300 uppercase tracking-wider">
+              Quick Connection Presets
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onConfigChange({
+                    ...config,
+                    url: "/api/mcp/builtin",
+                    mode: "proxy",
+                  });
+                }}
+                className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                  config.url === "/api/mcp/builtin"
+                    ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                    : "bg-neutral-950 border-neutral-800 hover:border-neutral-700 text-neutral-400"
+                }`}
+              >
+                <span className="text-[11px] font-bold flex items-center gap-1 text-emerald-400">
+                  <Database className="w-3.5 h-3.5 shrink-0" /> Built-in Sandbox
+                </span>
+                <span className="text-[9px] opacity-75 mt-1">Instant Android/MT simulation</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onConfigChange({
+                    ...config,
+                    url: "http://127.0.0.1:2319/mcp",
+                    mode: "direct",
+                  });
+                }}
+                className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                  config.url.includes("127.0.0.1") && config.mode === "direct"
+                    ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                    : "bg-neutral-950 border-neutral-800 hover:border-neutral-700 text-neutral-400"
+                }`}
+              >
+                <span className="text-[11px] font-bold flex items-center gap-1 text-sky-400">
+                  <Globe className="w-3.5 h-3.5 shrink-0" /> Phone Localhost
+                </span>
+                <span className="text-[9px] opacity-75 mt-1">Direct port 2319 on device</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onConfigChange({
+                    ...config,
+                    url: "https://your-tunnel.ngrok-free.app/mcp",
+                    mode: "proxy",
+                  });
+                }}
+                className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                  config.url.startsWith("https://")
+                    ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                    : "bg-neutral-950 border-neutral-800 hover:border-neutral-700 text-neutral-400"
+                }`}
+              >
+                <span className="text-[11px] font-bold flex items-center gap-1 text-purple-400">
+                  <ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Remote / Ngrok
+                </span>
+                <span className="text-[9px] opacity-75 mt-1">Cloud or tunneled HTTPS</span>
+              </button>
+            </div>
+          </div>
+
           <form onSubmit={handleTestConnect} className="space-y-4">
             
             {/* Server Endpoint URL */}
@@ -97,7 +168,7 @@ export default function SettingsPanel({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. http://127.0.0.1:2319/mcp"
+                  placeholder="e.g. /api/mcp/builtin or http://127.0.0.1:2319/mcp"
                   value={config.url}
                   onChange={(e) => handleFieldChange("url", e.target.value)}
                   className="w-full pl-9 pr-4 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-sm text-neutral-200 font-mono focus:outline-none focus:border-emerald-500 transition"
@@ -105,7 +176,7 @@ export default function SettingsPanel({
                 />
               </div>
               <p className="text-[10px] text-neutral-500 leading-normal">
-                Specify the transport-ready HTTP or JSON-RPC endpoint (e.g. `http://127.0.0.1:2319/mcp` or `http://localhost:2319/`).
+                Use <code className="text-emerald-400 font-mono">/api/mcp/builtin</code> for instant MT Manager testing, or <code className="text-sky-400 font-mono">http://127.0.0.1:2319/mcp</code> for your local device.
               </p>
             </div>
 
@@ -128,7 +199,7 @@ export default function SettingsPanel({
                     <Globe className="w-3.5 h-3.5" /> Direct Browser
                   </p>
                   <p className="text-[9px] mt-1 opacity-70">
-                    Client-side fetch to localhost. Requires server CORS headers.
+                    Browser fetches directly to device localhost.
                   </p>
                 </button>
 
@@ -145,7 +216,7 @@ export default function SettingsPanel({
                     <ShieldAlert className="w-3.5 h-3.5" /> Server Proxy
                   </p>
                   <p className="text-[9px] mt-1 opacity-70">
-                    Bypasses browser CORS block. Ideal for ngrok / remote servers.
+                    Bypasses CORS. Works for Built-in sandbox & ngrok.
                   </p>
                 </button>
               </div>
@@ -255,17 +326,47 @@ export default function SettingsPanel({
               {connectionError && (
                 <div className="flex items-start gap-3 p-3 bg-red-950/15 border border-red-900/30 rounded-lg">
                   <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                  <div className="text-xs space-y-1.5 leading-normal">
+                  <div className="text-xs space-y-2.5 leading-normal w-full">
                     <p className="font-bold text-red-400">Handshake Failed</p>
-                    <p className="text-neutral-300 font-mono text-[11px] break-all">{connectionError}</p>
-                    <div className="p-2.5 bg-neutral-950 rounded border border-neutral-850 space-y-1">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-neutral-400">Troubleshooting hints:</p>
-                      <ul className="list-disc pl-3 text-[10px] text-neutral-500 space-y-1">
-                        <li>Is your local MCP server actively running?</li>
-                        <li>If using `Direct` mode, check browser Console for CORS blocks.</li>
-                        <li>If using localhost on HTTPS, bypass browser sandbox security rules.</li>
-                        <li>Consider exposing your server via `ngrok` and using `Proxy` mode.</li>
-                      </ul>
+                    <p className="text-neutral-300 font-mono text-[11px] whitespace-pre-line break-words">{connectionError}</p>
+                    
+                    {/* Quick Recovery One-Click Actions */}
+                    <div className="p-3 bg-neutral-950 rounded-lg border border-neutral-850 space-y-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-400">Quick Fix Options:</p>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onConfigChange({
+                              ...config,
+                              url: "/api/mcp/builtin",
+                              mode: "proxy",
+                            });
+                            setTimeout(() => {
+                              onConnect();
+                            }, 50);
+                          }}
+                          className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                        >
+                          <Database className="w-3.5 h-3.5" /> Use Built-in MT Sandbox
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onConfigChange({
+                              ...config,
+                              mode: "direct",
+                            });
+                            setTimeout(() => {
+                              onConnect();
+                            }, 50);
+                          }}
+                          className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                        >
+                          <Globe className="w-3.5 h-3.5" /> Switch to Direct Browser Mode
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
