@@ -34,10 +34,10 @@ import {
 export default function App() {
   const [activeTab, setActiveTab] = useState<"agent" | "explorer" | "console" | "history" | "settings">("settings");
 
-  // Connection Configurations (Defaults to Built-in MT Manager Sandbox for out-of-the-box readiness)
+  // Connection Configurations (Defaults to MT Manager local port 2319)
   const [config, setConfig] = useState<ConnectionConfig>({
-    url: "/api/mcp/builtin",
-    mode: "proxy",
+    url: "http://127.0.0.1:2319/mcp",
+    mode: "direct",
     apiKey: "",
     isCustomHeader: false,
     customHeaderName: "Authorization",
@@ -64,7 +64,7 @@ export default function App() {
     "You are an expert full-stack developer copilot integrated with an MCP environment. Help the user achieve their goals by calling local system tools via Model Context Protocol. Always explain clearly what tools you are using and summarize files or changes elegantly."
   );
 
-  // Auto-connect to built-in virtual MCP server on mount
+  // Initialize console logs on mount without auto-connecting
   useEffect(() => {
     setConsoleLogs([
       {
@@ -73,12 +73,11 @@ export default function App() {
         type: "system",
         direction: "none",
         method: "SYSTEM",
-        payload: { info: "AI MCP Workspace Client booted. Initializing workspace..." },
+        payload: {
+          info: "AI MCP Workspace Client booted. Disconnected. Please select a connection preset and tap 'Initialize & Fetch Schemas'.",
+        },
       },
     ]);
-
-    // Initial handshake
-    handleConnect();
   }, []);
 
   const getHumanSummary = (method: string, params: any): string => {
@@ -151,7 +150,9 @@ export default function App() {
           headers[config.customHeaderName] = config.apiKey;
         }
         
-        let fetchRes: Response;
+        let fetchRes: Response | null = null;
+        let isDirectBlocked = false;
+
         try {
           fetchRes = await fetch(config.url, {
             method: "POST",
@@ -159,32 +160,68 @@ export default function App() {
             body: JSON.stringify(rpcPayload),
           });
         } catch (fetchErr: any) {
-          throw new Error(
-            `Connection refused or blocked by browser: ${fetchErr.message || String(fetchErr)}. Ensure your Termux SSH tunnel is active and using an HTTPS URL.`
-          );
+          isDirectBlocked = true;
         }
 
-        const rawText = await fetchRes.text();
-        if (!rawText || !rawText.trim()) {
-          throw new Error(
-            `MCP server returned an empty response (HTTP ${fetchRes.status}). Verify MT Manager is accepting connections on port 2319.`
-          );
-        }
+        // If direct fetch was blocked by CORS or Mixed Content, attempt Proxy fallback automatically
+        if (isDirectBlocked || !fetchRes) {
+          try {
+            const proxyRes = await fetch("/api/mcp/proxy", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                url: config.url,
+                headers,
+                body: rpcPayload,
+              }),
+            });
+            const proxyText = await proxyRes.text();
+            if (proxyRes.ok && !proxyText.trim().startsWith("<")) {
+              const parsed = JSON.parse(proxyText);
+              responseData = parsed.data || parsed;
+            } else {
+              throw new Error(proxyText);
+            }
+          } catch {
+            const isLocal = config.url.includes("127.0.0.1") || config.url.includes("localhost");
+            if (isLocal) {
+              throw new Error(
+                "Cannot reach '127.0.0.1:2319' directly from an HTTPS webpage due to browser security restrictions.\n\n" +
+                "Fix: In Termux run 'ssh -R 80:127.0.0.1:2319 nokey@localhost.run', then paste your HTTPS tunnel URL (or test with 'Built-in Sandbox')."
+              );
+            } else {
+              throw new Error(
+                `Could not connect to '${config.url}'.\n\n` +
+                "Troubleshooting Checklist:\n" +
+                "1. Is MT Manager opened on your Android phone with the MCP Server started on port 2319?\n" +
+                "2. Is your Termux SSH tunnel active (ssh -R 80:127.0.0.1:2319 nokey@localhost.run)?\n" +
+                "3. If Termux restarted, check if a new tunnel URL was generated."
+              );
+            }
+          }
+        } else {
+          const rawText = await fetchRes.text();
+          if (!rawText || !rawText.trim()) {
+            throw new Error(
+              `MCP server returned an empty response (HTTP ${fetchRes.status}). Verify MT Manager is accepting connections on port 2319.`
+            );
+          }
 
-        if (rawText.trim().startsWith("<") || rawText.includes("<!DOCTYPE")) {
-          throw new Error(
-            `Received HTML webpage instead of JSON-RPC response (HTTP ${fetchRes.status}). Check that your tunnel URL ends with '/mcp' or that MT Manager is running.`
-          );
-        }
+          if (rawText.trim().startsWith("<") || rawText.includes("<!DOCTYPE")) {
+            throw new Error(
+              `Received HTML webpage instead of JSON-RPC response (HTTP ${fetchRes.status}). Check that your tunnel URL ends with '/mcp' or that MT Manager is running.`
+            );
+          }
 
-        try {
-          responseData = JSON.parse(rawText);
-        } catch (parseErr: any) {
-          throw new Error(`Failed to parse server response as JSON: ${rawText.slice(0, 120)}...`);
-        }
+          try {
+            responseData = JSON.parse(rawText);
+          } catch (parseErr: any) {
+            throw new Error(`Failed to parse server response as JSON: ${rawText.slice(0, 120)}...`);
+          }
 
-        if (!fetchRes.ok && !responseData?.error) {
-          throw new Error(`HTTP Error ${fetchRes.status}: ${fetchRes.statusText}`);
+          if (!fetchRes.ok && !responseData?.error) {
+            throw new Error(`HTTP Error ${fetchRes.status}: ${fetchRes.statusText}`);
+          }
         }
       } else {
         // Server proxy mode
@@ -214,23 +251,28 @@ export default function App() {
         if (rawText.trim().startsWith("<") || rawText.includes("<!DOCTYPE") || fetchRes.status === 404) {
           // If the user is on Netlify and provided an HTTPS tunnel, try direct fetch fallback automatically
           if (config.url.startsWith("https://") || config.url.startsWith("http://")) {
-            console.warn("Backend proxy not found (running on static host like Netlify). Falling back to Direct Browser mode.");
             const directHeaders: Record<string, string> = { "Content-Type": "application/json" };
             if (config.isCustomHeader && config.customHeaderName && config.apiKey) {
               directHeaders[config.customHeaderName] = config.apiKey;
             }
-            const directRes = await fetch(config.url, {
-              method: "POST",
-              headers: directHeaders,
-              body: JSON.stringify(rpcPayload),
-            });
-            const directText = await directRes.text();
-            if (directText.trim().startsWith("<") || directText.includes("<!DOCTYPE")) {
+            try {
+              const directRes = await fetch(config.url, {
+                method: "POST",
+                headers: directHeaders,
+                body: JSON.stringify(rpcPayload),
+              });
+              const directText = await directRes.text();
+              if (directText.trim().startsWith("<") || directText.includes("<!DOCTYPE")) {
+                throw new Error(
+                  `Tunnel returned HTML instead of JSON-RPC (HTTP ${directRes.status}). Verify your localhost.run tunnel in Termux and check MT Manager.`
+                );
+              }
+              responseData = JSON.parse(directText);
+            } catch (err: any) {
               throw new Error(
-                `Tunnel returned HTML instead of JSON-RPC (HTTP ${directRes.status}). Verify your localhost.run tunnel in Termux and check MT Manager.`
+                `Could not reach '${config.url}'. Verify MT Manager's MCP server is started on port 2319 and Termux SSH tunnel is active.`
               );
             }
-            responseData = JSON.parse(directText);
           } else {
             throw new Error(
               `Proxy endpoint '/api/mcp/proxy' returned HTML (HTTP ${fetchRes.status}). You are on a static host (Netlify). Please switch Transport Mode to 'Direct Browser' in Settings.`

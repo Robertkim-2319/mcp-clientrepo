@@ -441,12 +441,31 @@ async function startServer() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      const response = await fetch(url, {
+      let targetUrl = url;
+      let response = await fetch(targetUrl, {
         method: "POST",
         headers: mergedHeaders,
         body: JSON.stringify(body),
         signal: controller.signal,
       });
+
+      // If root returned 404 and doesn't end with /mcp, try /mcp
+      if (response.status === 404 && !targetUrl.endsWith("/mcp")) {
+        const altUrl = targetUrl.endsWith("/") ? `${targetUrl}mcp` : `${targetUrl}/mcp`;
+        try {
+          const altResponse = await fetch(altUrl, {
+            method: "POST",
+            headers: mergedHeaders,
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          });
+          if (altResponse.ok) {
+            response = altResponse;
+          }
+        } catch {
+          // Keep initial response
+        }
+      }
 
       clearTimeout(timeoutId);
 

@@ -138,7 +138,7 @@ export default function SettingsPanel({
                 onClick={() => {
                   onConfigChange({
                     ...config,
-                    url: "https://b12c15fd9fd7e9.lhr.life/mcp",
+                    url: "https://5ee9c3827c79ba.lhr.life",
                     mode: "direct",
                   });
                 }}
@@ -151,7 +151,7 @@ export default function SettingsPanel({
                 <span className="text-[11px] font-bold flex items-center gap-1 text-purple-400">
                   <ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Termux Tunnel
                 </span>
-                <span className="text-[9px] opacity-75 mt-1">Direct HTTPS (Netlify Ready)</span>
+                <span className="text-[9px] opacity-75 mt-1">localhost.run HTTPS (Live)</span>
               </button>
             </div>
           </div>
