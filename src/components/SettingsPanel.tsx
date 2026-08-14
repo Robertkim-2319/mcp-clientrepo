@@ -87,31 +87,46 @@ export default function SettingsPanel({
         <div className="lg:col-span-6 p-5 border-r border-neutral-850 space-y-6 overflow-y-auto">
           {/* Quick Presets */}
           <div className="space-y-2">
-            <label className="block text-xs font-semibold text-neutral-300 uppercase tracking-wider">
-              Quick Connection Presets
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold text-neutral-300 uppercase tracking-wider">
+                Connection Options
+              </label>
+              <span className="text-[10px] text-emerald-400 font-medium">
+                ✨ Built-in Sandbox is 100% ready for Netlify
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {/* Preset 1: Built-in Sandbox (Best for Netlify) */}
               <button
                 type="button"
                 onClick={() => {
                   onConfigChange({
                     ...config,
                     url: "/api/mcp/builtin",
-                    mode: "proxy",
+                    mode: "direct",
                   });
                 }}
-                className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
-                  config.url === "/api/mcp/builtin"
-                    ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                className={`p-3 rounded-xl border text-left transition flex flex-col justify-between relative overflow-hidden ${
+                  config.url === "/api/mcp/builtin" || config.url.endsWith("/api/mcp/builtin")
+                    ? "bg-emerald-500/15 border-emerald-500/60 ring-1 ring-emerald-500/30 text-emerald-200"
                     : "bg-neutral-950 border-neutral-800 hover:border-neutral-700 text-neutral-400"
                 }`}
+                id="preset-builtin-sandbox"
               >
-                <span className="text-[11px] font-bold flex items-center gap-1 text-emerald-400">
-                  <Database className="w-3.5 h-3.5 shrink-0" /> Built-in Sandbox
-                </span>
-                <span className="text-[9px] opacity-75 mt-1">Instant Android/MT simulation</span>
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-emerald-400">
+                    <Database className="w-4 h-4 shrink-0" /> Built-in Sandbox
+                  </span>
+                  <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    Best for Netlify
+                  </span>
+                </div>
+                <p className="text-[10px] opacity-80 mt-2 leading-relaxed">
+                  Zero setup. Full MT Manager & Android tools emulation running directly in your browser. Always works.
+                </p>
               </button>
 
+              {/* Preset 2: Phone Localhost */}
               <button
                 type="button"
                 onClick={() => {
@@ -121,18 +136,27 @@ export default function SettingsPanel({
                     mode: "direct",
                   });
                 }}
-                className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
-                  config.url.includes("127.0.0.1") && config.mode === "direct"
-                    ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
+                  config.url.includes("127.0.0.1")
+                    ? "bg-sky-500/15 border-sky-500/60 ring-1 ring-sky-500/30 text-sky-200"
                     : "bg-neutral-950 border-neutral-800 hover:border-neutral-700 text-neutral-400"
                 }`}
+                id="preset-phone-localhost"
               >
-                <span className="text-[11px] font-bold flex items-center gap-1 text-sky-400">
-                  <Globe className="w-3.5 h-3.5 shrink-0" /> Phone Localhost
-                </span>
-                <span className="text-[9px] opacity-75 mt-1">Direct port 2319 on device</span>
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-sky-400">
+                    <Globe className="w-4 h-4 shrink-0" /> Phone Localhost
+                  </span>
+                  <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">
+                    Local Only
+                  </span>
+                </div>
+                <p className="text-[10px] opacity-80 mt-2 leading-relaxed">
+                  Only works when running web app locally on your phone (e.g. <code className="text-sky-300 font-mono">localhost:3000</code>).
+                </p>
               </button>
 
+              {/* Preset 3: Termux Tunnel */}
               <button
                 type="button"
                 onClick={() => {
@@ -142,16 +166,24 @@ export default function SettingsPanel({
                     mode: "direct",
                   });
                 }}
-                className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
-                  config.url.includes("lhr.life")
-                    ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
+                  config.url.includes("lhr.life") || config.url.includes("ngrok")
+                    ? "bg-purple-500/15 border-purple-500/60 ring-1 ring-purple-500/30 text-purple-200"
                     : "bg-neutral-950 border-neutral-800 hover:border-neutral-700 text-neutral-400"
                 }`}
+                id="preset-termux-tunnel"
               >
-                <span className="text-[11px] font-bold flex items-center gap-1 text-purple-400">
-                  <ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Termux Tunnel
-                </span>
-                <span className="text-[9px] opacity-75 mt-1">localhost.run HTTPS (Live)</span>
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-purple-400">
+                    <ShieldAlert className="w-4 h-4 shrink-0" /> Termux Tunnel
+                  </span>
+                  <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                    Real Device
+                  </span>
+                </div>
+                <p className="text-[10px] opacity-80 mt-2 leading-relaxed">
+                  Requires active Termux SSH session and live HTTPS tunnel URL from your phone.
+                </p>
               </button>
             </div>
           </div>
