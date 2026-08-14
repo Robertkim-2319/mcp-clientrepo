@@ -529,21 +529,30 @@ async function startServer() {
 
       // Map chat messages to Gemini's native content schema
       const formattedContents = messages.map((msg: any) => {
-        const parts: any[] = [];
-
+        // If this is a tool execution result
         if (msg.role === "tool") {
-          // If the role is tool, it's a response to a previous function call
-          parts.push({
-            functionResponse: {
-              name: msg.name,
-              response: msg.result,
-            },
-          });
           return {
             role: "tool",
-            parts,
+            parts: [
+              {
+                functionResponse: {
+                  name: msg.name,
+                  response: (typeof msg.result === "object" && msg.result !== null) ? msg.result : { result: msg.result ?? msg.content ?? "ok" },
+                },
+              },
+            ],
           };
         }
+
+        // If the model previously output raw parts (with thoughtSignature / functionCalls intact), preserve them
+        if (msg.role === "model" && Array.isArray(msg.rawParts) && msg.rawParts.length > 0) {
+          return {
+            role: "model",
+            parts: msg.rawParts,
+          };
+        }
+
+        const parts: any[] = [];
 
         // Add text content if present
         if (msg.content) {
@@ -553,18 +562,25 @@ async function startServer() {
         // Add function calls if the model generated them in a previous turn
         if (msg.toolCalls && msg.toolCalls.length > 0) {
           msg.toolCalls.forEach((tc: any) => {
-            parts.push({
+            const partObj: any = {
               functionCall: {
                 name: tc.name,
-                args: tc.arguments,
+                args: tc.arguments || {},
               },
-            });
+            };
+            if (tc.thoughtSignature) {
+              partObj.thoughtSignature = tc.thoughtSignature;
+            }
+            if (typeof tc.thought === "boolean") {
+              partObj.thought = tc.thought;
+            }
+            parts.push(partObj);
           });
         }
 
         return {
           role: msg.role === "model" ? "model" : "user",
-          parts,
+          parts: parts.length > 0 ? parts : [{ text: "" }],
         };
       });
 
@@ -578,22 +594,34 @@ async function startServer() {
       }
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-3.7-flash",
         contents: formattedContents,
         config,
       });
 
-      // Prepare response payload
+      // Extract candidate data and raw parts to preserve thought signatures
+      const candidate = response.candidates?.[0];
+      const candidateContent = candidate?.content;
+      const rawParts = candidateContent?.parts || [];
       const text = response.text || "";
       const functionCalls = response.functionCalls || [];
 
       res.json({
         text,
-        functionCalls: functionCalls.map((fc) => ({
-          name: fc.name,
-          arguments: fc.args,
-          id: (fc as any).id || `call_${Math.random().toString(36).substr(2, 9)}`,
-        })),
+        rawParts,
+        functionCalls: functionCalls.map((fc: any, idx: number) => {
+          const matchingPart = rawParts.find(
+            (p: any) => p.functionCall && p.functionCall.name === fc.name
+          ) || rawParts[idx];
+
+          return {
+            name: fc.name,
+            arguments: fc.args || {},
+            id: fc.id || `call_${Math.random().toString(36).substr(2, 9)}`,
+            thoughtSignature: (matchingPart as any)?.thoughtSignature,
+            thought: (matchingPart as any)?.thought,
+          };
+        }),
       });
     } catch (error: any) {
       console.error("Gemini chat error:", error);

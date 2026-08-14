@@ -88,11 +88,16 @@ export interface ChatMessage {
   role: "user" | "model" | "system" | "tool";
   content: string;
   timestamp: string;
+  name?: string;
+  result?: any;
+  rawParts?: any[];
   // Optional metadata to display when a tool is called by the agent
   toolCalls?: {
     id: string;
     name: string;
     arguments: Record<string, any>;
+    thoughtSignature?: string;
+    thought?: boolean;
   }[];
   toolResults?: {
     id: string;

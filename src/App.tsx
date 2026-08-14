@@ -448,87 +448,102 @@ export default function App() {
       return;
     }
 
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: currentMessages,
-        mcpTools: tools,
-        systemInstruction,
-      }),
-    });
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: currentMessages,
+          mcpTools: tools,
+          systemInstruction,
+        }),
+      });
 
-    if (!res.ok) {
-      const errRes = await res.json();
-      throw new Error(errRes.message || "Failed to call Chat API");
-    }
+      if (!res.ok) {
+        const errRes = await res.json().catch(() => ({}));
+        throw new Error(errRes.message || "Failed to communicate with AI Copilot");
+      }
 
-    const { text, functionCalls } = await res.json();
+      const { text, functionCalls, rawParts } = await res.json();
 
-    // 1. Model returned plain text answer
-    if (!functionCalls || functionCalls.length === 0) {
-      const responseMsg: ChatMessage = {
-        id: `msg_model_${Math.random().toString(36).substr(2, 9)}`,
+      // 1. Model returned plain text answer
+      if (!functionCalls || functionCalls.length === 0) {
+        const responseMsg: ChatMessage = {
+          id: `msg_model_${Math.random().toString(36).substr(2, 9)}`,
+          role: "model",
+          content: text || "Task completed successfully.",
+          timestamp: new Date().toLocaleTimeString(),
+          rawParts: rawParts || [],
+        };
+        setChatMessages((prev) => [...prev, responseMsg]);
+        return;
+      }
+
+      // 2. Model returned tool calls
+      const modelTurnId = `msg_call_${Math.random().toString(36).substr(2, 9)}`;
+      const modelCallMessage: ChatMessage = {
+        id: modelTurnId,
         role: "model",
-        content: text || "Execution successfully processed.",
+        content: text || "",
+        timestamp: new Date().toLocaleTimeString(),
+        rawParts: rawParts || [],
+        toolCalls: functionCalls.map((fc: any) => ({
+          id: fc.id,
+          name: fc.name,
+          arguments: fc.arguments,
+          thoughtSignature: fc.thoughtSignature,
+          thought: fc.thought,
+        })),
+      };
+
+      // Update history visually to display tool cards first
+      let latestHistory = [...currentMessages, modelCallMessage];
+      setChatMessages(latestHistory);
+
+      // Run each tool call requested
+      const toolResultsList: any[] = [];
+      for (const fc of functionCalls) {
+        try {
+          const result = await handleCallTool(fc.name, fc.arguments);
+          toolResultsList.push({
+            id: fc.id,
+            name: fc.name,
+            result,
+          });
+        } catch (err: any) {
+          toolResultsList.push({
+            id: fc.id,
+            name: fc.name,
+            result: { error: "Failed tool invocation", details: err.message || String(err) },
+          });
+        }
+      }
+
+      // Append tool responses as standard Gemini parts
+      const toolResponses: ChatMessage[] = toolResultsList.map((tr) => ({
+        id: modelTurnId, // Paired with model turn id
+        role: "tool",
+        name: tr.name,
+        content: typeof tr.result === "string" ? tr.result : JSON.stringify(tr.result, null, 2),
+        timestamp: new Date().toLocaleTimeString(),
+        result: tr.result,
+      }));
+
+      latestHistory = [...latestHistory, ...toolResponses];
+      setChatMessages(latestHistory);
+
+      // Recursively call agent to generate final text or perform another tool iteration
+      await runAgentLoop(latestHistory, iterationLimit - 1);
+    } catch (err: any) {
+      console.error("Agent error:", err);
+      const errorMsg: ChatMessage = {
+        id: `msg_err_${Math.random().toString(36).substr(2, 9)}`,
+        role: "model",
+        content: `⚠️ Encountered an error: ${err.message || String(err)}. Please try asking again or check connection settings.`,
         timestamp: new Date().toLocaleTimeString(),
       };
-      setChatMessages((prev) => [...prev, responseMsg]);
-      return;
+      setChatMessages((prev) => [...prev, errorMsg]);
     }
-
-    // 2. Model returned tool calls
-    const modelTurnId = `msg_call_${Math.random().toString(36).substr(2, 9)}`;
-    const modelCallMessage: ChatMessage = {
-      id: modelTurnId,
-      role: "model",
-      content: text || "",
-      timestamp: new Date().toLocaleTimeString(),
-      toolCalls: functionCalls.map((fc: any) => ({
-        id: fc.id,
-        name: fc.name,
-        arguments: fc.arguments,
-      })),
-    };
-
-    // Update history visually to display tool cards first
-    let latestHistory = [...currentMessages, modelCallMessage];
-    setChatMessages(latestHistory);
-
-    // Run each tool call requested
-    const toolResultsList: any[] = [];
-    for (const fc of functionCalls) {
-      try {
-        const result = await handleCallTool(fc.name, fc.arguments);
-        toolResultsList.push({
-          id: fc.id,
-          name: fc.name,
-          result,
-        });
-      } catch (err: any) {
-        toolResultsList.push({
-          id: fc.id,
-          name: fc.name,
-          result: { error: "Failed tool invocation", details: err.message || String(err) },
-        });
-      }
-    }
-
-    // Append tool responses as standard Gemini parts
-    const toolResponses: ChatMessage[] = toolResultsList.map((tr) => ({
-      id: modelTurnId, // Paired with model turn id
-      role: "tool",
-      name: tr.name,
-      content: JSON.stringify(tr.result),
-      timestamp: new Date().toLocaleTimeString(),
-      result: tr.result,
-    }));
-
-    latestHistory = [...latestHistory, ...toolResponses];
-    setChatMessages(latestHistory);
-
-    // Recursively call agent to generate final text or perform another tool iteration
-    await runAgentLoop(latestHistory, iterationLimit - 1);
   };
 
   return (
