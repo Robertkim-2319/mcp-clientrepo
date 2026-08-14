@@ -254,6 +254,28 @@ export default function SettingsPanel({
               </div>
             </div>
 
+            {/* Gemini AI API Key configuration for Netlify & Custom Hosts */}
+            <div className="bg-neutral-950/30 border border-neutral-800 rounded-xl p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-neutral-300 flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-purple-400" />
+                  Gemini AI Copilot Key (Netlify)
+                </h4>
+                <span className="text-[9px] text-neutral-400 uppercase font-mono">Optional</span>
+              </div>
+              <p className="text-[10px] text-neutral-400 leading-relaxed">
+                If hosting on Netlify, either add <code className="text-purple-300 font-mono">GEMINI_API_KEY</code> in your Netlify Site Configuration, or paste your key below:
+              </p>
+              <input
+                type="password"
+                placeholder="AIzaSy... (Paste Google Gemini API Key)"
+                value={config.geminiApiKey || ""}
+                onChange={(e) => handleFieldChange("geminiApiKey", e.target.value)}
+                className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-neutral-300 font-mono focus:outline-none focus:border-purple-500 transition"
+                id="gemini-api-key-input"
+              />
+            </div>
+
             {/* Custom Authentication and Headers */}
             <div className="bg-neutral-950/30 border border-neutral-800 rounded-xl p-4 space-y-3">
               <h4 className="text-xs font-bold text-neutral-300 flex items-center gap-1.5">

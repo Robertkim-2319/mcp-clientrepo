@@ -113,4 +113,5 @@ export interface ConnectionConfig {
   apiKey: string;
   isCustomHeader: boolean;
   customHeaderName: string;
+  geminiApiKey?: string;
 }

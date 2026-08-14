@@ -1,1 +1,4 @@
-/*    /index.html   200
+/api/mcp/proxy    /.netlify/functions/proxy   200
+/api/chat         /.netlify/functions/chat    200
+/*                /index.html                 200
+

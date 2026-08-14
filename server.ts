@@ -504,6 +504,26 @@ async function startServer() {
   // Gemini Chat agent endpoint with dynamic MCP function schemas
   app.post("/api/chat", async (req, res) => {
     const { messages, mcpTools, systemInstruction } = req.body;
+    const headerKey = req.headers["x-gemini-api-key"] as string | undefined;
+    const activeApiKey = headerKey || process.env.GEMINI_API_KEY;
+
+    if (!activeApiKey) {
+      return res.status(500).json({
+        error: "Missing GEMINI_API_KEY",
+        message: "Gemini API key is not configured. Please set GEMINI_API_KEY in your environment or provide it in Settings.",
+      });
+    }
+
+    const activeAi = headerKey
+      ? new GoogleGenAI({
+          apiKey: headerKey,
+          httpOptions: {
+            headers: {
+              "User-Agent": "aistudio-build",
+            },
+          },
+        })
+      : ai;
 
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: "Missing or invalid messages history" });
@@ -612,7 +632,7 @@ async function startServer() {
         config.tools = [{ functionDeclarations }];
       }
 
-      const response = await ai.models.generateContent({
+      const response = await activeAi.models.generateContent({
         model: "gemini-3.7-flash",
         contents: formattedContents,
         config,

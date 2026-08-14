@@ -20,10 +20,13 @@ export default async (req, context) => {
   }
 
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || req.headers.get("x-gemini-api-key");
     if (!apiKey) {
       return new Response(
-        JSON.stringify({ error: "GEMINI_API_KEY is not configured on this server." }),
+        JSON.stringify({
+          error: "Missing GEMINI_API_KEY",
+          message: "Gemini API Key is not configured on this Netlify deployment. Please add 'GEMINI_API_KEY' in your Netlify Dashboard (Site configuration -> Environment variables), or enter your Gemini Key in the Settings tab.",
+        }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }

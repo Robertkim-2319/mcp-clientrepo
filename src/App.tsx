@@ -34,14 +34,34 @@ import {
 export default function App() {
   const [activeTab, setActiveTab] = useState<"agent" | "explorer" | "console" | "history" | "settings">("settings");
 
-  // Connection Configurations (Defaults to MT Manager local port 2319)
-  const [config, setConfig] = useState<ConnectionConfig>({
-    url: "http://127.0.0.1:2319/mcp",
-    mode: "direct",
-    apiKey: "",
-    isCustomHeader: false,
-    customHeaderName: "Authorization",
+  // Connection Configurations with localStorage restoration
+  const [config, setConfig] = useState<ConnectionConfig>(() => {
+    try {
+      const saved = localStorage.getItem("mcp_connection_config");
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {
+      // Ignore fallback
+    }
+    return {
+      url: "http://127.0.0.1:2319/mcp",
+      mode: "direct",
+      apiKey: "",
+      isCustomHeader: false,
+      customHeaderName: "Authorization",
+      geminiApiKey: "",
+    };
   });
+
+  const handleConfigChange = (newConfig: ConnectionConfig) => {
+    setConfig(newConfig);
+    try {
+      localStorage.setItem("mcp_connection_config", JSON.stringify(newConfig));
+    } catch {
+      // Ignore
+    }
+  };
 
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -562,9 +582,14 @@ export default function App() {
     }
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (config.geminiApiKey) {
+        headers["x-gemini-api-key"] = config.geminiApiKey;
+      }
+
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           messages: currentMessages,
           mcpTools: tools,
@@ -572,12 +597,34 @@ export default function App() {
         }),
       });
 
+      const rawText = await res.text();
+
       if (!res.ok) {
-        const errRes = await res.json().catch(() => ({}));
-        throw new Error(errRes.message || "Failed to communicate with AI Copilot");
+        let errorDetails = "";
+        try {
+          const errRes = JSON.parse(rawText);
+          errorDetails = errRes.message || errRes.error || "";
+        } catch {
+          if (rawText.trim().startsWith("<") || rawText.includes("<!DOCTYPE")) {
+            errorDetails =
+              "Netlify returned an HTML error or redirect page. Ensure you configured 'GEMINI_API_KEY' in Netlify Site Settings -> Environment Variables, or enter your Gemini API Key in the Settings tab.";
+          } else {
+            errorDetails = rawText.slice(0, 150);
+          }
+        }
+        throw new Error(errorDetails || `AI Copilot request failed with status ${res.status}`);
       }
 
-      const { text, functionCalls, rawParts } = await res.json();
+      let parsedData: any;
+      try {
+        parsedData = JSON.parse(rawText);
+      } catch {
+        throw new Error(
+          "Received an invalid non-JSON response from serverless function. Please check your Gemini API key."
+        );
+      }
+
+      const { text, functionCalls, rawParts } = parsedData;
 
       // 1. Model returned plain text answer
       if (!functionCalls || functionCalls.length === 0) {
@@ -826,7 +873,7 @@ export default function App() {
         {activeTab === "settings" && (
           <SettingsPanel
             config={config}
-            onConfigChange={setConfig}
+            onConfigChange={handleConfigChange}
             isConnected={isConnected}
             isConnecting={isConnecting}
             connectionError={connectionError}
