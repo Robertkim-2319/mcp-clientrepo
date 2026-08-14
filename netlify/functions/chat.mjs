@@ -40,26 +40,38 @@ export default async (req, context) => {
       parameters: t.inputSchema || { type: "object", properties: {} },
     }));
 
-    const formattedContents = (messages || []).map((msg) => {
+    const formattedContents = [];
+
+    for (const msg of messages || []) {
       if (msg.role === "tool") {
-        return {
-          role: "tool",
-          parts: [
-            {
-              functionResponse: {
-                name: msg.name,
-                response: typeof msg.result === "object" && msg.result !== null ? msg.result : { result: msg.result ?? msg.content ?? "ok" },
-              },
-            },
-          ],
+        const fnResponsePart = {
+          functionResponse: {
+            name: msg.name,
+            response:
+              typeof msg.result === "object" && msg.result !== null
+                ? msg.result
+                : { result: msg.result ?? msg.content ?? "ok" },
+          },
         };
+
+        const lastContent = formattedContents[formattedContents.length - 1];
+        if (lastContent && lastContent.role === "user" && lastContent.parts?.some((p) => p.functionResponse)) {
+          lastContent.parts.push(fnResponsePart);
+        } else {
+          formattedContents.push({
+            role: "user",
+            parts: [fnResponsePart],
+          });
+        }
+        continue;
       }
 
       if (msg.role === "model" && Array.isArray(msg.rawParts) && msg.rawParts.length > 0) {
-        return {
+        formattedContents.push({
           role: "model",
           parts: msg.rawParts,
-        };
+        });
+        continue;
       }
 
       const parts = [];
@@ -80,11 +92,11 @@ export default async (req, context) => {
         });
       }
 
-      return {
+      formattedContents.push({
         role: msg.role === "model" ? "model" : "user",
         parts: parts.length > 0 ? parts : [{ text: "" }],
-      };
-    });
+      });
+    }
 
     const config = {
       systemInstruction: systemInstruction || "You are an MCP assistant.",
@@ -94,11 +106,39 @@ export default async (req, context) => {
       config.tools = [{ functionDeclarations }];
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
-      contents: formattedContents,
-      config,
-    });
+    const candidateModels = ["gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
+    let response = null;
+    let lastModelError = null;
+
+    for (const modelName of candidateModels) {
+      try {
+        response = await ai.models.generateContent({
+          model: modelName,
+          contents: formattedContents,
+          config,
+        });
+        if (response) break;
+      } catch (err) {
+        lastModelError = err;
+        const errStr = String(err?.message || err);
+        const isCapacityIssue =
+          errStr.includes("503") ||
+          errStr.includes("429") ||
+          errStr.includes("high demand") ||
+          errStr.includes("UNAVAILABLE") ||
+          errStr.includes("RESOURCE_EXHAUSTED");
+
+        if (isCapacityIssue && modelName !== candidateModels[candidateModels.length - 1]) {
+          console.warn(`Model ${modelName} returned capacity spike (${errStr}). Trying fallback model...`);
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!response && lastModelError) {
+      throw lastModelError;
+    }
 
     const candidate = response.candidates?.[0];
     const candidateContent = candidate?.content;

@@ -567,28 +567,40 @@ async function startServer() {
       });
 
       // Map chat messages to Gemini's native content schema
-      const formattedContents = messages.map((msg: any) => {
-        // If this is a tool execution result
+      const formattedContents: any[] = [];
+
+      for (const msg of messages) {
+        // If this is a tool execution result, in Gemini API it must have role "user"
         if (msg.role === "tool") {
-          return {
-            role: "tool",
-            parts: [
-              {
-                functionResponse: {
-                  name: msg.name,
-                  response: (typeof msg.result === "object" && msg.result !== null) ? msg.result : { result: msg.result ?? msg.content ?? "ok" },
-                },
-              },
-            ],
+          const fnResponsePart = {
+            functionResponse: {
+              name: msg.name,
+              response:
+                typeof msg.result === "object" && msg.result !== null
+                  ? msg.result
+                  : { result: msg.result ?? msg.content ?? "ok" },
+            },
           };
+
+          const lastContent = formattedContents[formattedContents.length - 1];
+          if (lastContent && lastContent.role === "user" && lastContent.parts?.some((p: any) => p.functionResponse)) {
+            lastContent.parts.push(fnResponsePart);
+          } else {
+            formattedContents.push({
+              role: "user",
+              parts: [fnResponsePart],
+            });
+          }
+          continue;
         }
 
         // If the model previously output raw parts (with thoughtSignature / functionCalls intact), preserve them
         if (msg.role === "model" && Array.isArray(msg.rawParts) && msg.rawParts.length > 0) {
-          return {
+          formattedContents.push({
             role: "model",
             parts: msg.rawParts,
-          };
+          });
+          continue;
         }
 
         const parts: any[] = [];
@@ -617,14 +629,16 @@ async function startServer() {
           });
         }
 
-        return {
+        formattedContents.push({
           role: msg.role === "model" ? "model" : "user",
           parts: parts.length > 0 ? parts : [{ text: "" }],
-        };
-      });
+        });
+      }
 
       const config: any = {
-        systemInstruction: systemInstruction || "You are a professional AI assistant integrated with an MCP client. You have access to local/remote tools via MCP. Help the user complete tasks using these tools. Always explain what you are doing before calling tools.",
+        systemInstruction:
+          systemInstruction ||
+          "You are a professional AI assistant integrated with an MCP client. You have access to local/remote tools via MCP. Help the user complete tasks using these tools. Always explain what you are doing before calling tools.",
       };
 
       // Only attach tools config if there are tools available
@@ -632,11 +646,40 @@ async function startServer() {
         config.tools = [{ functionDeclarations }];
       }
 
-      const response = await activeAi.models.generateContent({
-        model: "gemini-3.7-flash",
-        contents: formattedContents,
-        config,
-      });
+      // Generate content with automatic fallback if a model is experiencing high demand (503 / 429)
+      const candidateModels = ["gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
+      let response: any = null;
+      let lastModelError: any = null;
+
+      for (const modelName of candidateModels) {
+        try {
+          response = await activeAi.models.generateContent({
+            model: modelName,
+            contents: formattedContents,
+            config,
+          });
+          if (response) break;
+        } catch (err: any) {
+          lastModelError = err;
+          const errStr = String(err?.message || err);
+          const isCapacityIssue =
+            errStr.includes("503") ||
+            errStr.includes("429") ||
+            errStr.includes("high demand") ||
+            errStr.includes("UNAVAILABLE") ||
+            errStr.includes("RESOURCE_EXHAUSTED");
+
+          if (isCapacityIssue && modelName !== candidateModels[candidateModels.length - 1]) {
+            console.warn(`Model ${modelName} returned temporary capacity spike (${errStr}). Trying next resilient model...`);
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      if (!response && lastModelError) {
+        throw lastModelError;
+      }
 
       // Extract candidate data and raw parts to preserve thought signatures
       const candidate = response.candidates?.[0];
