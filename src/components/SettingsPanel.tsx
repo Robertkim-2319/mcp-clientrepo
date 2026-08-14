@@ -138,20 +138,20 @@ export default function SettingsPanel({
                 onClick={() => {
                   onConfigChange({
                     ...config,
-                    url: "https://your-tunnel.ngrok-free.app/mcp",
+                    url: "https://b12c15fd9fd7e9.lhr.life/mcp",
                     mode: "proxy",
                   });
                 }}
                 className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
-                  config.url.startsWith("https://")
+                  config.url.includes("lhr.life")
                     ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
                     : "bg-neutral-950 border-neutral-800 hover:border-neutral-700 text-neutral-400"
                 }`}
               >
                 <span className="text-[11px] font-bold flex items-center gap-1 text-purple-400">
-                  <ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Remote / Ngrok
+                  <ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Termux Tunnel
                 </span>
-                <span className="text-[9px] opacity-75 mt-1">Cloud or tunneled HTTPS</span>
+                <span className="text-[9px] opacity-75 mt-1">localhost.run / lhr.life HTTPS</span>
               </button>
             </div>
           </div>
