@@ -139,7 +139,7 @@ export default function SettingsPanel({
                   onConfigChange({
                     ...config,
                     url: "https://b12c15fd9fd7e9.lhr.life/mcp",
-                    mode: "proxy",
+                    mode: "direct",
                   });
                 }}
                 className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
@@ -151,7 +151,7 @@ export default function SettingsPanel({
                 <span className="text-[11px] font-bold flex items-center gap-1 text-purple-400">
                   <ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Termux Tunnel
                 </span>
-                <span className="text-[9px] opacity-75 mt-1">localhost.run / lhr.life HTTPS</span>
+                <span className="text-[9px] opacity-75 mt-1">Direct HTTPS (Netlify Ready)</span>
               </button>
             </div>
           </div>

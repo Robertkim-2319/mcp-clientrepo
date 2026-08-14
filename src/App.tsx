@@ -18,6 +18,7 @@ import RequestHistory from "./components/RequestHistory";
 import McpExplorer from "./components/McpExplorer";
 import AiChat from "./components/AiChat";
 import SettingsPanel from "./components/SettingsPanel";
+import { handleVirtualRpc } from "./lib/virtualMcp";
 import { 
   Sparkles, 
   Wrench, 
@@ -140,42 +141,112 @@ export default function App() {
     try {
       let responseData: any;
 
-      if (config.mode === "direct") {
+      // 1. If pointing to Built-in Virtual Sandbox, execute directly in browser
+      if (config.url === "/api/mcp/builtin" || config.url.endsWith("/api/mcp/builtin")) {
+        responseData = handleVirtualRpc(rpcPayload);
+      } else if (config.mode === "direct") {
+        // Direct browser fetch
         const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (config.isCustomHeader && config.customHeaderName && config.apiKey) {
           headers[config.customHeaderName] = config.apiKey;
         }
-        const fetchRes = await fetch(config.url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(rpcPayload),
-        });
+        
+        let fetchRes: Response;
+        try {
+          fetchRes = await fetch(config.url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(rpcPayload),
+          });
+        } catch (fetchErr: any) {
+          throw new Error(
+            `Connection refused or blocked by browser: ${fetchErr.message || String(fetchErr)}. Ensure your Termux SSH tunnel is active and using an HTTPS URL.`
+          );
+        }
 
-        if (!fetchRes.ok) {
+        const rawText = await fetchRes.text();
+        if (!rawText || !rawText.trim()) {
+          throw new Error(
+            `MCP server returned an empty response (HTTP ${fetchRes.status}). Verify MT Manager is accepting connections on port 2319.`
+          );
+        }
+
+        if (rawText.trim().startsWith("<") || rawText.includes("<!DOCTYPE")) {
+          throw new Error(
+            `Received HTML webpage instead of JSON-RPC response (HTTP ${fetchRes.status}). Check that your tunnel URL ends with '/mcp' or that MT Manager is running.`
+          );
+        }
+
+        try {
+          responseData = JSON.parse(rawText);
+        } catch (parseErr: any) {
+          throw new Error(`Failed to parse server response as JSON: ${rawText.slice(0, 120)}...`);
+        }
+
+        if (!fetchRes.ok && !responseData?.error) {
           throw new Error(`HTTP Error ${fetchRes.status}: ${fetchRes.statusText}`);
         }
-        responseData = await fetchRes.json();
       } else {
         // Server proxy mode
         const headers: Record<string, string> = {};
         if (config.isCustomHeader && config.customHeaderName && config.apiKey) {
           headers[config.customHeaderName] = config.apiKey;
         }
-        const fetchRes = await fetch("/api/mcp/proxy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            url: config.url,
-            headers,
-            body: rpcPayload,
-          }),
-        });
 
-        const proxyResult = await fetchRes.json();
-        if (!fetchRes.ok) {
-          throw new Error(proxyResult.message || `Proxy error with status ${fetchRes.status}`);
+        let fetchRes: Response;
+        try {
+          fetchRes = await fetch("/api/mcp/proxy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url: config.url,
+              headers,
+              body: rpcPayload,
+            }),
+          });
+        } catch (proxyErr: any) {
+          throw new Error(`Proxy connection error: ${proxyErr.message}`);
         }
-        responseData = proxyResult.data;
+
+        const rawText = await fetchRes.text();
+
+        // Detect if deployed to static hosting (Netlify/Vercel) without Express backend
+        if (rawText.trim().startsWith("<") || rawText.includes("<!DOCTYPE") || fetchRes.status === 404) {
+          // If the user is on Netlify and provided an HTTPS tunnel, try direct fetch fallback automatically
+          if (config.url.startsWith("https://") || config.url.startsWith("http://")) {
+            console.warn("Backend proxy not found (running on static host like Netlify). Falling back to Direct Browser mode.");
+            const directHeaders: Record<string, string> = { "Content-Type": "application/json" };
+            if (config.isCustomHeader && config.customHeaderName && config.apiKey) {
+              directHeaders[config.customHeaderName] = config.apiKey;
+            }
+            const directRes = await fetch(config.url, {
+              method: "POST",
+              headers: directHeaders,
+              body: JSON.stringify(rpcPayload),
+            });
+            const directText = await directRes.text();
+            if (directText.trim().startsWith("<") || directText.includes("<!DOCTYPE")) {
+              throw new Error(
+                `Tunnel returned HTML instead of JSON-RPC (HTTP ${directRes.status}). Verify your localhost.run tunnel in Termux and check MT Manager.`
+              );
+            }
+            responseData = JSON.parse(directText);
+          } else {
+            throw new Error(
+              `Proxy endpoint '/api/mcp/proxy' returned HTML (HTTP ${fetchRes.status}). You are on a static host (Netlify). Please switch Transport Mode to 'Direct Browser' in Settings.`
+            );
+          }
+        } else {
+          try {
+            const proxyResult = JSON.parse(rawText);
+            if (!fetchRes.ok) {
+              throw new Error(proxyResult.message || `Proxy error with status ${fetchRes.status}`);
+            }
+            responseData = proxyResult.data;
+          } catch (jsonErr: any) {
+            throw new Error(`Invalid JSON from proxy: ${rawText.slice(0, 100)}`);
+          }
+        }
       }
 
       const latencyMs = Math.round(performance.now() - startTime);
